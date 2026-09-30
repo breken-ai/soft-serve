@@ -283,7 +283,14 @@ func (d *Backend) ImportRepository(_ context.Context, name string, user proto.Us
 		d.manager.Run(tid, done)
 	}()
 
-	return <-repoc, <-done
+	// Wait for the task to finish first. repoc is only sent to after the
+	// clone and CreateRepository succeed, so reading it first blocks forever
+	// when either of them fails.
+	if err := <-done; err != nil {
+		return nil, err
+	}
+
+	return <-repoc, nil
 }
 
 // DeleteRepository deletes a repository.

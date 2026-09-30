@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/soft-serve/pkg/db"
 	"github.com/charmbracelet/soft-serve/pkg/proto"
@@ -88,4 +89,32 @@ func TestValidateImportRemote(t *testing.T) {
 			is.True(slices.Contains(env, "GIT_CONFIG_KEY_0=http.followRedirects"))
 		})
 	}
+}
+
+// TestImportRepositoryCloneFailure verifies that a failed clone is reported
+// back to the caller instead of blocking the import forever.
+func TestImportRepositoryCloneFailure(t *testing.T) {
+	is := is.New(t)
+	be, _ := newTestBackend(t)
+	ctx := context.Background()
+
+	admin, err := be.User(ctx, "admin")
+	is.NoErr(err)
+
+	errc := make(chan error, 1)
+	go func() {
+		// Nothing listens on port 1, so the clone fails right away.
+		_, err := be.ImportRepository(ctx, "broken", admin, "ssh://git@127.0.0.1:1/missing.git", proto.RepositoryOptions{})
+		errc <- err
+	}()
+
+	select {
+	case err := <-errc:
+		is.True(err != nil)
+	case <-time.After(30 * time.Second):
+		t.Fatal("ImportRepository did not return after the clone failed")
+	}
+
+	_, err = be.Repository(ctx, "broken")
+	is.True(errors.Is(err, proto.ErrRepoNotFound))
 }
