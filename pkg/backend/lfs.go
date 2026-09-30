@@ -63,6 +63,11 @@ func StoreRepoMissingLFSObjects(ctx context.Context, repo proto.Repository, dbx 
 			return err
 		}
 
+		// The object is already stored, there is nothing to download.
+		if exist && obj.ID != 0 {
+			continue
+		}
+
 		if exist && obj.ID == 0 {
 			if err := store.CreateLFSObject(ctx, dbx, repo.ID(), pointer.Oid, pointer.Size); err != nil {
 				return db.WrapError(err)
@@ -82,6 +87,11 @@ func StoreRepoMissingLFSObjects(ctx context.Context, repo proto.Repository, dbx 
 
 	if err, ok := <-errChan; ok {
 		return err
+	}
+
+	// Download whatever is left over from the last partial batch.
+	if len(batch) > 0 {
+		return download(batch)
 	}
 
 	return nil
